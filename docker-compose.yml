@@ -1,0 +1,65 @@
+# Local-dev / single-host orchestration for POPIAGuard (this API +
+# ../popia-guard + their own Postgres instance). Not a production
+# deployment topology by itself — see storage/local-disk.storage.ts's
+# notes on the uploads volume's limitations.
+name: popia-guard
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: popia_guard
+    ports:
+      - "5433:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 4011
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: popia_guard
+      FRONTEND_URL: http://localhost:4010
+      JWT_SECRET: ${JWT_SECRET:-local-dev-secret-change-me}
+      JWT_EXPIRES_IN: 12h
+      UPLOADS_DIR: /app/uploads
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    ports:
+      - "4011:4011"
+    volumes:
+      - uploads:/app/uploads
+
+  frontend:
+    build:
+      context: ../popia-guard
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:4011
+    depends_on:
+      - api
+    environment:
+      NEXT_PUBLIC_API_URL: http://api:4011
+    ports:
+      - "4010:4010"
+
+volumes:
+  db-data:
+  uploads:
